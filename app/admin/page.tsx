@@ -4,28 +4,37 @@ import Link from "next/link";
 export const revalidate = 0; // Disable caching to ensure real-time stats
 
 export default async function AdminPage() {
-  // Query statistics from database directly
-  const productsCountRes = await sql`SELECT COUNT(*)::int as count FROM products`;
-  const ordersCountRes = await sql`
-    SELECT 
-      COUNT(*)::int as count, 
-      COALESCE(SUM(total_price_paise), 0)::bigint as total_revenue 
-    FROM orders
-  `;
+  let totalProducts = 0;
+  let totalOrders = 0;
+  let totalRevenueRupees = 0;
+  let recentOrders: any[] = [];
 
-  const totalProducts = productsCountRes[0]?.count || 0;
-  const totalOrders = ordersCountRes[0]?.count || 0;
-  const totalRevenuePaise = Number(ordersCountRes[0]?.total_revenue || 0);
-  const totalRevenueRupees = totalRevenuePaise / 100;
+  try {
+    // Query statistics from database directly
+    const productsCountRes = await sql`SELECT COUNT(*)::int as count FROM products`;
+    const ordersCountRes = await sql`
+      SELECT 
+        COUNT(*)::int as count, 
+        COALESCE(SUM(total_price_paise), 0)::bigint as total_revenue 
+      FROM orders
+    `;
 
-  // Fetch recent orders
-  const recentOrders = await sql`
-    SELECT o.id, o.buyer_name, o.total_price_paise, o.created_at, u.name as seller_name
-    FROM orders o
-    JOIN users u ON o.user_id = u.id
-    ORDER BY o.created_at DESC
-    LIMIT 5
-  `;
+    totalProducts = productsCountRes[0]?.count || 0;
+    totalOrders = ordersCountRes[0]?.count || 0;
+    const totalRevenuePaise = Number(ordersCountRes[0]?.total_revenue || 0);
+    totalRevenueRupees = totalRevenuePaise / 100;
+
+    // Fetch recent orders
+    recentOrders = await sql`
+      SELECT o.id, o.buyer_name, o.total_price_paise, o.created_at, u.name as seller_name
+      FROM orders o
+      JOIN users u ON o.user_id = u.id
+      ORDER BY o.created_at DESC
+      LIMIT 5
+    `;
+  } catch (error) {
+    console.warn("Admin Dashboard: Database stats fetch deferred (build/no-connection context):", error);
+  }
 
   return (
     <div className="space-y-8">
