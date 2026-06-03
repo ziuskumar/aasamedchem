@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { signIn } from "next-auth/react";
+import { signIn, getSession } from "next-auth/react";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -34,9 +34,8 @@ export default function LoginPage() {
       }
 
       if (result?.ok) {
-        // Fetch session to retrieve role
-        const sessionRes = await fetch("/api/auth/session");
-        const session = await sessionRes.json();
+        // Fetch latest session using getSession to bypass Next.js 15 client fetch caching
+        const session = await getSession();
         const role = session?.user?.role;
 
         if (role === "admin") {
