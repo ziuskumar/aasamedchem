@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { signIn, getSession } from "next-auth/react";
+import { signIn } from "next-auth/react";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -11,9 +11,11 @@ export default function LoginPage() {
 
   async function handleLogin(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+
     setError("");
     setLoading(true);
 
+    // Validation
     if (!email || !password) {
       setError("Please enter both email and password.");
       setLoading(false);
@@ -27,27 +29,33 @@ export default function LoginPage() {
         redirect: false,
       });
 
-      if (result?.error) {
-        setError("Invalid email or password. Please try again.");
+      console.log("LOGIN RESULT:", result);
+
+      // Invalid credentials
+      if (!result || result.error) {
+        setError("Invalid email or password.");
         setLoading(false);
         return;
       }
 
-      if (result?.ok) {
-        // Fetch latest session using getSession to bypass Next.js 15 client fetch caching
-        const session = await getSession();
-        const role = session?.user?.role;
+      // Login success
+      if (result.ok) {
+        // Small delay for session sync on Vercel
+        await new Promise((resolve) => setTimeout(resolve, 500));
 
-        if (role === "admin") {
+        // Redirect based on email
+        if (email === "admin@test.com") {
           window.location.href = "/admin";
-        } else if (role === "seller") {
+        } else if (email === "seller@test.com") {
           window.location.href = "/seller";
         } else {
           window.location.href = "/";
         }
       }
-    } catch (err: any) {
-      setError("An unexpected error occurred. Please try again.");
+    } catch (error) {
+      console.error("LOGIN ERROR:", error);
+
+      setError("Something went wrong. Please try again.");
       setLoading(false);
     }
   }
@@ -55,13 +63,19 @@ export default function LoginPage() {
   return (
     <main className="min-h-screen bg-zinc-950 flex items-center justify-center p-4">
       <div className="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-2xl p-8 shadow-2xl space-y-6">
+
         {/* Title */}
         <div className="text-center">
-          <h1 className="text-3xl font-black tracking-tight text-white">AASAMEDCHEM</h1>
-          <p className="text-sm text-zinc-400 mt-2">Sign in to manage chemical supplies & inventory</p>
+          <h1 className="text-3xl font-black tracking-tight text-white">
+            AASAMEDCHEM
+          </h1>
+
+          <p className="text-sm text-zinc-400 mt-2">
+            Sign in to manage chemical supplies & inventory
+          </p>
         </div>
 
-        {/* Error Notification */}
+        {/* Error */}
         {error && (
           <div className="bg-red-950/40 border border-red-500/50 text-red-200 p-3.5 rounded-lg text-xs font-medium text-center">
             {error}
@@ -70,13 +84,20 @@ export default function LoginPage() {
 
         {/* Form */}
         <form onSubmit={handleLogin} className="space-y-4">
+
+          {/* Email */}
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-zinc-400" htmlFor="email">
+            <label
+              className="text-xs font-semibold text-zinc-400"
+              htmlFor="email"
+            >
               Email Address
             </label>
+
             <input
               id="email"
               type="email"
+              autoComplete="email"
               placeholder="admin@test.com or seller@test.com"
               className="w-full bg-zinc-950 border border-zinc-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 text-white rounded-lg px-3.5 py-2.5 text-sm outline-none transition-all"
               value={email}
@@ -86,13 +107,19 @@ export default function LoginPage() {
             />
           </div>
 
+          {/* Password */}
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-zinc-400" htmlFor="password">
+            <label
+              className="text-xs font-semibold text-zinc-400"
+              htmlFor="password"
+            >
               Password
             </label>
+
             <input
               id="password"
               type="password"
+              autoComplete="current-password"
               placeholder="••••••••"
               className="w-full bg-zinc-950 border border-zinc-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 text-white rounded-lg px-3.5 py-2.5 text-sm outline-none transition-all"
               value={password}
@@ -102,6 +129,7 @@ export default function LoginPage() {
             />
           </div>
 
+          {/* Submit */}
           <button
             type="submit"
             disabled={loading}
@@ -111,16 +139,42 @@ export default function LoginPage() {
           </button>
         </form>
 
-        {/* Demo Credentials Hint */}
-        <div className="bg-zinc-950 border border-zinc-850 rounded-xl p-4 space-y-2 text-xxs text-zinc-500">
-          <div className="font-semibold text-zinc-400 uppercase tracking-wider">Demo Credentials:</div>
-          <div className="flex justify-between">
-            <span>Admin: <strong className="text-zinc-300">admin@test.com</strong></span>
-            <span>Password: <strong className="text-zinc-300">admin123</strong></span>
+        {/* Demo Credentials */}
+        <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 space-y-2 text-xs text-zinc-500">
+          <div className="font-semibold text-zinc-400 uppercase tracking-wider">
+            Demo Credentials:
           </div>
+
           <div className="flex justify-between">
-            <span>Seller: <strong className="text-zinc-300">seller@test.com</strong></span>
-            <span>Password: <strong className="text-zinc-300">seller123</strong></span>
+            <span>
+              Admin:{" "}
+              <strong className="text-zinc-300">
+                admin@test.com
+              </strong>
+            </span>
+
+            <span>
+              Password:{" "}
+              <strong className="text-zinc-300">
+                admin123
+              </strong>
+            </span>
+          </div>
+
+          <div className="flex justify-between">
+            <span>
+              Seller:{" "}
+              <strong className="text-zinc-300">
+                seller@test.com
+              </strong>
+            </span>
+
+            <span>
+              Password:{" "}
+              <strong className="text-zinc-300">
+                seller123
+              </strong>
+            </span>
           </div>
         </div>
       </div>
