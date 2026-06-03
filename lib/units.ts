@@ -1,15 +1,22 @@
-const conversionMap: Record<string, number> = {
+// src/lib/units.ts
+
+export type BaseUnit = "g" | "mL" | "unit";
+
+const UNIT_MAP: Record<string, number> = {
+  // Weight
   g: 1,
   kg: 1000,
 
+  // Volume
   mL: 1,
   L: 1000,
 
+  // Count
   unit: 1,
 };
 
 export function toBaseQty(qty: number, unit: string): number {
-  const factor = conversionMap[unit];
+  const factor = UNIT_MAP[unit];
 
   if (!factor) {
     throw new Error(`Unsupported unit: ${unit}`);
@@ -32,7 +39,7 @@ export function formatINR(paise: number): string {
   }).format(paise / 100);
 }
 
-export function getCompatibleUnits(baseUnit: string): string[] {
+export function getCompatibleUnits(baseUnit: BaseUnit): string[] {
   switch (baseUnit) {
     case "g":
       return ["g", "kg"];
