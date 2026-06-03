@@ -98,7 +98,7 @@ export default async function AdminPage() {
           <div className="text-zinc-500 text-sm py-4 text-center">No orders placed recently.</div>
         ) : (
           <div className="divide-y divide-zinc-800">
-            {recentOrders.map((order) => (
+            {recentOrders.map((order: any) => (
               <div key={order.id} className="py-3 flex justify-between items-center text-sm">
                 <div>
                   <div className="font-semibold text-white">#ORD-{order.id.toString().padStart(4, "0")}</div>
