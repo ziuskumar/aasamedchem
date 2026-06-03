@@ -1,9 +1,4 @@
-if (!process.env.NEXTAUTH_SECRET) {
-  process.env.NEXTAUTH_SECRET = "mysecret123456789";
-}
-if (!process.env.NEXTAUTH_URL && process.env.VERCEL_URL) {
-  process.env.NEXTAUTH_URL = `https://${process.env.VERCEL_URL}`;
-}
+import "@/lib/env-fallback";
 
 import { getServerSession } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
