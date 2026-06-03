@@ -1,6 +1,6 @@
 # AASAMEDCHEM — Chemical Supplies & Sales Portal
 
-A premium, enterprise-grade inventory management and sales logging application built with **Next.js (App Router, React 19)**, **TypeScript**, **Tailwind CSS**, and **Neon Serverless PostgreSQL**.
+A premium, enterprise-grade inventory management and sales logging application built with **Next.js (App Router, React 19)**, **TypeScript**, **Tailwind CSS**, and **Neon Serverless PostgreSQL**..
 
 Designed specifically for chemical laboratories and medical supply houses, AASAMEDCHEM solves the complex challenge of managing multi-unit inventories (e.g., selling ethanol in Liters while tracking stock in milliliters, or selling table salt in kilograms while tracking stock in grams) with automatic unit conversions, real-time pricing previews, and strict Role-Based Access Control (RBAC).
 
