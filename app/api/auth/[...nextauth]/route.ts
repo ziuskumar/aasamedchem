@@ -79,7 +79,7 @@ export const authOptions: any = {
     },
   },
 
-  secret: process.env.NEXTAUTH_SECRET,
+  secret: process.env.NEXTAUTH_SECRET || "mysecret123456789",
 };
 
 const handler = NextAuth(authOptions);
