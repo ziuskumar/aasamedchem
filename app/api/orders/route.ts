@@ -1,21 +1,81 @@
-import { NextRequest, NextResponse } from "next/server";
-import { sql } from "@/lib/db";
+import { Pool } from "@neondatabase/serverless";
+import { NextResponse } from "next/server";
+import { ApiError, isApiError, parseNonNegativeNumber, parseRequiredString } from "@/lib/api-utils";
 import { getAuthSession } from "@/lib/auth";
+import { sql } from "@/lib/db";
 import { toBaseUnit, getCompatibleUnits } from "@/lib/units";
+
+type ProductRow = {
+  id: number;
+  name: string;
+  sku: string;
+  base_unit: "g" | "mL" | "unit";
+  stock_quantity: number;
+  price_per_base: number;
+};
+
+type OrderListRow = {
+  order_id: number;
+  buyer_name: string;
+  total_price_paise: number;
+  created_at: string;
+  seller_name: string;
+  item_id: number;
+  ordered_qty: string | number;
+  ordered_unit: string;
+  base_qty: string | number;
+  base_unit: string;
+  price_per_base_paise: number;
+  line_total_paise: number;
+  product_name: string;
+  product_sku: string;
+};
+
+type OrderMapEntry = {
+  id: number;
+  buyer_name: string;
+  total_price_paise: number;
+  created_at: string;
+  seller_name: string;
+  items: Array<{
+    id: number;
+    product_name: string;
+    product_sku: string;
+    ordered_qty: number;
+    ordered_unit: string;
+    base_qty: number;
+    base_unit: string;
+    price_per_base_paise: number;
+    line_total_paise: number;
+  }>;
+};
+
+type OrderItemInput = {
+  product_id?: unknown;
+  qty?: unknown;
+  unit?: unknown;
+};
+
+type OrderBody = {
+  buyer_name?: unknown;
+  items?: unknown;
+};
 
 // ==========================================
 // GET ORDERS (admin sees all, seller sees own)
 // ==========================================
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
-    const session = (await getAuthSession()) as any;
+    const session = await getAuthSession();
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { role, id: userId } = session.user;
-
-    const finalUserId = isNaN(Number(userId)) ? -1 : Number(userId);
+    const finalUserId = Number(userId);
+    if (!Number.isInteger(finalUserId) || finalUserId <= 0) {
+      return NextResponse.json({ error: "Invalid session user id" }, { status: 401 });
+    }
 
     // Join orders, users, order_items, and products
     const rows = await sql`
@@ -42,9 +102,9 @@ export async function GET(req: NextRequest) {
       ORDER BY o.created_at DESC, o.id DESC;
     `;
 
-    const ordersMap: Record<number, any> = {};
+    const ordersMap: Record<number, OrderMapEntry> = {};
 
-    for (const row of rows) {
+    for (const row of rows as OrderListRow[]) {
       const orderId = row.order_id;
       if (!ordersMap[orderId]) {
         ordersMap[orderId] = {
@@ -85,19 +145,17 @@ export async function GET(req: NextRequest) {
 // ==========================================
 export async function POST(req: Request) {
   try {
-    const session = (await getAuthSession()) as any;
+    const session = await getAuthSession();
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await req.json();
-    const { buyer_name, items } = body; // items: Array<{ product_id: number, qty: number, unit: string }>
+    const body = (await req.json()) as OrderBody;
+    const buyerName = parseRequiredString(body.buyer_name, "buyer_name");
+    const items = body.items;
 
-    if (!buyer_name || !items || !Array.isArray(items) || items.length === 0) {
-      return NextResponse.json(
-        { error: "Missing required fields: buyer_name and items" },
-        { status: 400 }
-      );
+    if (!Array.isArray(items) || items.length === 0) {
+      throw new ApiError(400, "At least one order item is required.");
     }
 
     // Step 1: Pre-validate all items and check stock levels
@@ -107,57 +165,55 @@ export async function POST(req: Request) {
       unit: string;
       baseQty: number;
       lineTotalPaise: number;
+      productId: number;
+      pricePerBasePaise: number;
     }> = [];
 
-    for (const item of items) {
-      const { product_id, qty, unit } = item;
-
-      if (!product_id || !qty || !unit) {
-        return NextResponse.json(
-          { error: "Invalid item details: product_id, qty, and unit are required" },
-          { status: 400 }
-        );
-      }
+    for (const rawItem of items as OrderItemInput[]) {
+      const productId = parseNonNegativeNumber(
+        rawItem.product_id,
+        "product_id",
+        { integer: true }
+      );
+      const qty = parseNonNegativeNumber(rawItem.qty, "qty");
+      const unit = parseRequiredString(rawItem.unit, "unit");
 
       const products = await sql`
-        SELECT * FROM products WHERE id = ${product_id}
+        SELECT * FROM products WHERE id = ${productId}
       `;
-      const product = products[0];
+      const product = products[0] as ProductRow | undefined;
 
       if (!product) {
-        return NextResponse.json(
-          { error: `Product with ID ${product_id} not found` },
-          { status: 404 }
-        );
+        throw new ApiError(404, `Product with ID ${productId} not found.`);
       }
 
       // Check unit compatibility
       const compatible = getCompatibleUnits(product.base_unit);
       if (!compatible.includes(unit)) {
-        return NextResponse.json(
-          { error: `Incompatible unit '${unit}' for product '${product.name}' with base unit '${product.base_unit}'` },
-          { status: 400 }
+        throw new ApiError(
+          400,
+          `Incompatible unit '${unit}' for product '${product.name}' with base unit '${product.base_unit}'.`
         );
       }
 
       // Convert quantity to base unit
       let baseQty: number;
       try {
-        baseQty = toBaseUnit(Number(qty), unit);
-      } catch (err: any) {
-        return NextResponse.json(
-          { error: `Unit conversion error for ${product.name}: ${err.message}` },
-          { status: 400 }
+        baseQty = toBaseUnit(qty, unit);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Unknown conversion error";
+        throw new ApiError(
+          400,
+          `Unit conversion error for ${product.name}: ${message}`
         );
       }
 
       // Check stock
       if (product.stock_quantity < baseQty) {
-        return NextResponse.json(
-          {
-            error: `Insufficient stock for ${product.name}. Available: ${product.stock_quantity} ${product.base_unit}, Requested: ${baseQty} ${product.base_unit}`,
-          },
-          { status: 400 }
+        throw new ApiError(
+          400,
+          `Insufficient stock for ${product.name}. Available: ${product.stock_quantity} ${product.base_unit}, Requested: ${baseQty} ${product.base_unit}`
         );
       }
 
@@ -166,79 +222,133 @@ export async function POST(req: Request) {
 
       validatedItems.push({
         product,
-        qty: Number(qty),
+        productId,
+        qty,
         unit,
         baseQty,
         lineTotalPaise,
+        pricePerBasePaise: Number(product.price_per_base),
       });
     }
 
-    // Step 2: Perform inserts and updates
-    // Create order header
-    const finalUserId = isNaN(Number(session.user.id)) ? -1 : Number(session.user.id);
-    const orderRes = await sql`
-      INSERT INTO orders (user_id, buyer_name, total_price_paise)
-      VALUES (${finalUserId}, ${buyer_name}, 0)
-      RETURNING id;
-    `;
-    const orderId = orderRes[0].id;
-
-    let totalPricePaise = 0;
-
-    for (const val of validatedItems) {
-      const { product, qty, unit, baseQty, lineTotalPaise } = val;
-
-      // Deduct stock from products table
-      await sql`
-        UPDATE products
-        SET stock_quantity = stock_quantity - ${baseQty}
-        WHERE id = ${product.id};
-      `;
-
-      // Insert into order_items
-      await sql`
-        INSERT INTO order_items (
-          order_id,
-          product_id,
-          ordered_qty,
-          ordered_unit,
-          base_qty,
-          base_unit,
-          price_per_base_paise,
-          line_total_paise
-        )
-        VALUES (
-          ${orderId},
-          ${product.id},
-          ${qty},
-          ${unit},
-          ${baseQty},
-          ${product.base_unit},
-          ${product.price_per_base},
-          ${lineTotalPaise}
-        );
-      `;
-
-      totalPricePaise += lineTotalPaise;
+    const finalUserId = Number(session.user.id);
+    if (!Number.isInteger(finalUserId) || finalUserId <= 0) {
+      throw new ApiError(401, "Invalid session user id.");
     }
 
-    // Update total price in orders header
-    await sql`
-      UPDATE orders
-      SET total_price_paise = ${totalPricePaise}
-      WHERE id = ${orderId};
-    `;
+    const connectionString = process.env.DATABASE_URL;
+    if (!connectionString) {
+      throw new Error("DATABASE_URL is not set.");
+    }
 
-    return NextResponse.json({
-      success: true,
-      order_id: orderId,
-      total_price_paise: totalPricePaise,
-    }, { status: 201 });
+    const pool = new Pool({ connectionString });
+
+    try {
+      const client = await pool.connect();
+
+      try {
+        await client.query("BEGIN");
+
+        const orderRes = await client.query<{ id: number }>(
+          `
+            INSERT INTO orders (user_id, buyer_name, total_price_paise)
+            VALUES ($1, $2, 0)
+            RETURNING id
+          `,
+          [finalUserId, buyerName]
+        );
+        const orderId = orderRes.rows[0]?.id;
+        if (!orderId) {
+          throw new Error("Failed to create order header.");
+        }
+
+        let totalPricePaise = 0;
+
+        for (const item of validatedItems) {
+          const stockUpdate = await client.query(
+            `
+              UPDATE products
+              SET stock_quantity = stock_quantity - $1
+              WHERE id = $2 AND stock_quantity >= $1
+              RETURNING id
+            `,
+            [item.baseQty, item.productId]
+          );
+
+          if (stockUpdate.rowCount !== 1) {
+            throw new ApiError(
+              400,
+              `Insufficient stock for ${item.product.name}.`
+            );
+          }
+
+          await client.query(
+            `
+              INSERT INTO order_items (
+                order_id,
+                product_id,
+                ordered_qty,
+                ordered_unit,
+                base_qty,
+                base_unit,
+                price_per_base_paise,
+                line_total_paise
+              )
+              VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            `,
+            [
+              orderId,
+              item.productId,
+              item.qty,
+              item.unit,
+              item.baseQty,
+              item.product.base_unit,
+              item.pricePerBasePaise,
+              item.lineTotalPaise,
+            ]
+          );
+
+          totalPricePaise += item.lineTotalPaise;
+        }
+
+        await client.query(
+          `
+            UPDATE orders
+            SET total_price_paise = $1
+            WHERE id = $2
+          `,
+          [totalPricePaise, orderId]
+        );
+
+        await client.query("COMMIT");
+
+        return NextResponse.json(
+          {
+            success: true,
+            order_id: orderId,
+            total_price_paise: totalPricePaise,
+          },
+          { status: 201 }
+        );
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+    } finally {
+      await pool.end();
+    }
 
   } catch (error) {
     console.error("POST ORDER ERROR:", error);
+
+    if (isApiError(error)) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+
     return NextResponse.json(
-      { error: "Failed to place order: " + String(error) },
+      { error: "Failed to place order" },
       { status: 500 }
     );
   }

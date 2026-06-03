@@ -1,6 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
+import {
+  ApiError,
+  isApiError,
+  parseBaseUnit,
+  parseNonNegativeNumber,
+  parseOptionalString,
+  parsePricePaise,
+  parseRequiredString,
+} from "@/lib/api-utils";
 import { sql } from "@/lib/db";
 import { getAuthSession } from "@/lib/auth";
+
+type CreateProductBody = {
+  name?: unknown;
+  sku?: unknown;
+  category?: unknown;
+  description?: unknown;
+  base_unit?: unknown;
+  stock_quantity?: unknown;
+  price_per_base_paise?: unknown;
+  price_per_base?: unknown;
+};
 
 // ==========================================
 // GET PRODUCTS (?q=searchterm)
@@ -8,7 +28,7 @@ import { getAuthSession } from "@/lib/auth";
 export async function GET(req: NextRequest) {
   try {
     const searchParams = req.nextUrl.searchParams;
-    const q = searchParams.get("q") || "";
+    const q = (searchParams.get("q") || "").trim();
 
     const products = await sql`
       SELECT *
@@ -24,7 +44,7 @@ export async function GET(req: NextRequest) {
     console.error("GET PRODUCTS ERROR:", error);
     return NextResponse.json(
       { error: "Failed to fetch products" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -39,38 +59,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const body = await req.json();
-    const {
-      name,
-      sku,
-      category,
-      description,
-      base_unit,
-      stock_quantity,
-      price_per_base_paise,
-      price_per_base,
-    } = body;
-
-    const finalPricePaise = price_per_base_paise !== undefined 
-      ? price_per_base_paise 
-      : price_per_base;
-
-    // Validation
-    if (
-      !name ||
-      !sku ||
-      !base_unit ||
-      stock_quantity === undefined ||
-      finalPricePaise === undefined
-    ) {
-      return NextResponse.json(
-        { error: "Missing required fields: name, sku, base_unit, stock_quantity, price_per_base_paise" },
-        { status: 400 }
-      );
-    }
-
-    const finalCategory = category || "General";
-    const finalDescription = description || "";
+    const body = (await req.json()) as CreateProductBody;
+    const name = parseRequiredString(body.name, "name");
+    const sku = parseRequiredString(body.sku, "sku");
+    const baseUnit = parseBaseUnit(body.base_unit);
+    const stockQuantity = parseNonNegativeNumber(
+      body.stock_quantity,
+      "stock_quantity",
+      { integer: true },
+    );
+    const finalPricePaise = parsePricePaise(body as Record<string, unknown>);
+    const finalCategory = parseOptionalString(body.category) || "General";
+    const finalDescription = parseOptionalString(body.description) || "";
 
     const insertedProduct = await sql`
       INSERT INTO products (
@@ -87,9 +87,9 @@ export async function POST(req: Request) {
         ${sku},
         ${finalCategory},
         ${finalDescription},
-        ${base_unit},
-        ${Number(stock_quantity)},
-        ${Number(finalPricePaise)}
+        ${baseUnit},
+        ${stockQuantity},
+        ${finalPricePaise}
       )
       RETURNING *;
     `;
@@ -99,9 +99,27 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     console.error("CREATE PRODUCT ERROR:", error);
+
+    if (isApiError(error)) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: error.status },
+      );
+    }
+
+    if (
+      error instanceof Error &&
+      error.message.includes("duplicate key value violates unique constraint")
+    ) {
+      return NextResponse.json(
+        { error: "A product with this SKU already exists." },
+        { status: 409 },
+      );
+    }
+
     return NextResponse.json(
-      { error: String(error) },
-      { status: 500 }
+      { error: "Failed to create product" },
+      { status: 500 },
     );
   }
 }

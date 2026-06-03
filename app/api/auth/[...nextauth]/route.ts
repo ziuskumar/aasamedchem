@@ -1,3 +1,5 @@
+import type { AuthOptions } from "next-auth";
+import type { JWT } from "next-auth/jwt";
 import NextAuth from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 
@@ -5,7 +7,15 @@ import bcrypt from "bcryptjs";
 
 import { sql } from "@/lib/db";
 
-export const authOptions: any = {
+type DatabaseUserRow = {
+  id: number;
+  email: string;
+  password: string;
+  role: string;
+  name: string;
+};
+
+export const authOptions: AuthOptions = {
   providers: [
     CredentialsProvider({
       name: "credentials",
@@ -26,7 +36,7 @@ export const authOptions: any = {
           LIMIT 1
         `;
 
-        const user = users[0];
+        const user = users[0] as DatabaseUserRow | undefined;
 
         if (!user) {
           return null;
@@ -34,7 +44,7 @@ export const authOptions: any = {
 
         const isValidPassword = await bcrypt.compare(
           credentials.password,
-          user.password
+          user.password,
         );
 
         if (!isValidPassword) {
@@ -60,7 +70,13 @@ export const authOptions: any = {
   },
 
   callbacks: {
-    async jwt({ token, user }: any) {
+    async jwt({
+      token,
+      user,
+    }: {
+      token: JWT;
+      user?: { id: string; role: string };
+    }) {
       if (user) {
         token.role = user.role;
         token.id = user.id;
@@ -69,10 +85,10 @@ export const authOptions: any = {
       return token;
     },
 
-    async session({ session, token }: any) {
+    async session({ session, token }) {
       if (session.user) {
-        session.user.role = token.role;
-        session.user.id = token.id;
+        session.user.role = token.role ?? "";
+        session.user.id = token.id ?? "";
       }
 
       return session;
