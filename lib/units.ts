@@ -15,15 +15,17 @@ const UNIT_MAP: Record<string, number> = {
   unit: 1,
 };
 
-export function toBaseQty(qty: number, unit: string): number {
-  const factor = UNIT_MAP[unit];
+export function toBaseUnit(qty: number, fromUnit: string): number {
+  const factor = UNIT_MAP[fromUnit];
 
   if (!factor) {
-    throw new Error(`Unsupported unit: ${unit}`);
+    throw new Error(`Unsupported unit: ${fromUnit}`);
   }
 
   return qty * factor;
 }
+
+export const toBaseQty = toBaseUnit;
 
 export function calcLinePaise(
   baseQty: number,

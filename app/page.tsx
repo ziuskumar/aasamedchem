@@ -1,58 +1,32 @@
 "use client";
 
-import { signOut, useSession } from "next-auth/react";
+import { useSession } from "next-auth/react";
+import { useEffect } from "react";
 
 export default function HomePage() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
+
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      window.location.href = "/login";
+    } else if (status === "authenticated") {
+      const role = session?.user?.role;
+      if (role === "admin") {
+        window.location.href = "/admin";
+      } else if (role === "seller") {
+        window.location.href = "/seller";
+      } else {
+        window.location.href = "/login";
+      }
+    }
+  }, [status, session]);
 
   return (
-    <main className="p-10">
-      <h1 className="text-3xl font-bold mb-6">
-        AASAMEDCHEM Dashboard
-      </h1>
-
-      {!session ? (
-        <div>
-          <p className="mb-4">You are not logged in.</p>
-
-          <a
-            href="/login"
-            className="bg-black text-white px-4 py-2 rounded"
-          >
-            Go to Login
-          </a>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          <p>
-            Welcome:
-            <span className="font-bold ml-2">
-              {session.user?.name}
-            </span>
-          </p>
-
-          <p>
-            Role:
-            <span className="font-bold ml-2">
-              {(session.user as { role?: string })?.role}
-            </span>
-          </p>
-
-          <p>
-            Email:
-            <span className="font-bold ml-2">
-              {session.user?.email}
-            </span>
-          </p>
-
-          <button
-            onClick={() => signOut()}
-            className="bg-red-500 text-white px-4 py-2 rounded"
-          >
-            Logout
-          </button>
-        </div>
-      )}
+    <main className="min-h-screen bg-zinc-950 flex items-center justify-center text-zinc-450">
+      <div className="flex flex-col items-center gap-3">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+        <span className="text-sm font-medium tracking-wide">Connecting to AASAMEDCHEM portal...</span>
+      </div>
     </main>
   );
 }

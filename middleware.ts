@@ -4,37 +4,11 @@ import { NextResponse } from "next/server";
 export default withAuth(
   function middleware(req) {
     const token = req.nextauth.token;
-
     const path = req.nextUrl.pathname;
 
-    // ADMIN ROUTES
-    if (
-      path.startsWith("/admin") &&
-      token?.role !== "admin"
-    ) {
-      return NextResponse.redirect(
-        new URL("/", req.url)
-      );
-    }
-
-    // SELLER ROUTES
-    if (
-      path.startsWith("/seller") &&
-      token?.role !== "seller"
-    ) {
-      return NextResponse.redirect(
-        new URL("/", req.url)
-      );
-    }
-
-    // BUYER ROUTES
-    if (
-      path.startsWith("/buyer") &&
-      token?.role !== "buyer"
-    ) {
-      return NextResponse.redirect(
-        new URL("/", req.url)
-      );
+    // If path starts with /admin and role !== 'admin' -> redirect to /seller
+    if (path.startsWith("/admin") && token?.role !== "admin") {
+      return NextResponse.redirect(new URL("/seller", req.url));
     }
   },
   {
@@ -48,6 +22,5 @@ export const config = {
   matcher: [
     "/admin/:path*",
     "/seller/:path*",
-    "/buyer/:path*",
   ],
 };

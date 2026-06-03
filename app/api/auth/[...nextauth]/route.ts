@@ -55,10 +55,15 @@ export const authOptions: any = {
     strategy: "jwt",
   },
 
+  pages: {
+    signIn: "/login",
+  },
+
   callbacks: {
     async jwt({ token, user }: any) {
       if (user) {
         token.role = user.role;
+        token.id = user.id;
       }
 
       return token;
@@ -67,6 +72,7 @@ export const authOptions: any = {
     async session({ session, token }: any) {
       if (session.user) {
         session.user.role = token.role;
+        session.user.id = token.id;
       }
 
       return session;

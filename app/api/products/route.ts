@@ -1,49 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db";
+import { getAuthSession } from "@/lib/auth";
 
-
-// =========================
-// GET PRODUCTS
-// =========================
-
+// ==========================================
+// GET PRODUCTS (?q=searchterm)
+// ==========================================
 export async function GET(req: NextRequest) {
   try {
-
     const searchParams = req.nextUrl.searchParams;
-
     const q = searchParams.get("q") || "";
-    const category = searchParams.get("category");
-    const unitType = searchParams.get("unit_type");
 
     const products = await sql`
       SELECT *
       FROM products
       WHERE
-        (
-          name ILIKE ${"%" + q + "%"}
-          OR sku ILIKE ${"%" + q + "%"}
-          OR category ILIKE ${"%" + q + "%"}
-        )
-
-        AND (
-          ${category}::text IS NULL
-          OR category = ${category}
-        )
-
-        AND (
-          ${unitType}::text IS NULL
-          OR base_unit = ${unitType}
-        )
-
+        name ILIKE ${"%" + q + "%"}
+        OR sku ILIKE ${"%" + q + "%"}
       ORDER BY name ASC;
     `;
 
     return NextResponse.json(products);
-
   } catch (error) {
-
     console.error("GET PRODUCTS ERROR:", error);
-
     return NextResponse.json(
       { error: "Failed to fetch products" },
       { status: 500 }
@@ -51,17 +29,17 @@ export async function GET(req: NextRequest) {
   }
 }
 
-
-
-// =========================
-// CREATE PRODUCT
-// =========================
-
+// ==========================================
+// CREATE PRODUCT (admin only)
+// ==========================================
 export async function POST(req: Request) {
   try {
+    const session = await getAuthSession();
+    if (!session || session.user?.role !== "admin") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
     const body = await req.json();
-
     const {
       name,
       sku,
@@ -69,23 +47,30 @@ export async function POST(req: Request) {
       description,
       base_unit,
       stock_quantity,
+      price_per_base_paise,
       price_per_base,
     } = body;
+
+    const finalPricePaise = price_per_base_paise !== undefined 
+      ? price_per_base_paise 
+      : price_per_base;
 
     // Validation
     if (
       !name ||
       !sku ||
-      !category ||
       !base_unit ||
       stock_quantity === undefined ||
-      price_per_base === undefined
+      finalPricePaise === undefined
     ) {
       return NextResponse.json(
-        { error: "Missing required fields" },
+        { error: "Missing required fields: name, sku, base_unit, stock_quantity, price_per_base_paise" },
         { status: 400 }
       );
     }
+
+    const finalCategory = category || "General";
+    const finalDescription = description || "";
 
     const insertedProduct = await sql`
       INSERT INTO products (
@@ -100,11 +85,11 @@ export async function POST(req: Request) {
       VALUES (
         ${name},
         ${sku},
-        ${category},
-        ${description},
+        ${finalCategory},
+        ${finalDescription},
         ${base_unit},
-        ${stock_quantity},
-        ${price_per_base}
+        ${Number(stock_quantity)},
+        ${Number(finalPricePaise)}
       )
       RETURNING *;
     `;
@@ -112,13 +97,10 @@ export async function POST(req: Request) {
     return NextResponse.json(insertedProduct[0], {
       status: 201,
     });
-
   } catch (error) {
-
     console.error("CREATE PRODUCT ERROR:", error);
-
     return NextResponse.json(
-      { error: "Failed to create product" },
+      { error: String(error) },
       { status: 500 }
     );
   }
